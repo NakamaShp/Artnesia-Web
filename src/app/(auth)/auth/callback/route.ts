@@ -1,42 +1,43 @@
-// src/app/(auth)/auth/callback/route.ts
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+import { NextResponse } from 'next/server'
 
-import { createServerClient, type CookieOptions } from '@supabase/ssr';
-import { cookies } from 'next/headers';
-import { NextResponse, type NextRequest } from 'next/server';
-
-export async function GET(request: NextRequest) {
-  const { searchParams, origin } = new URL(request.url);
-  const code = searchParams.get('code');
-  const next = searchParams.get('next') ?? '/';
+export async function GET(request) {
+  const { searchParams, origin } = new URL(request.url)
+  const code = searchParams.get('code')
+  // Kalau ada parameter ?next=/profile, kita redirect kesana, kalau tidak ke /
+  const next = searchParams.get('next') ?? '/'
 
   if (code) {
-    // ⭐️ INI DIA SOLUSINYA: TAMBAHKAN 'await' ⭐️
-    const cookieStore = await cookies();
+    const cookieStore = cookies()
 
-    // Buat client secara INLINE (Mandiri)
-    const supabase = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
-      cookies: {
-        get(name: string) {
-          // 'cookieStore' sekarang adalah object yang benar, bukan Promise
-          return cookieStore.get(name)?.value;
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      {
+        cookies: {
+          get(name) {
+            return cookieStore.get(name)?.value
+          },
+          set(name, value, options) {
+            cookieStore.set({ name, value, ...options })
+          },
+          remove(name, options) {
+            cookieStore.delete({ name, ...options })
+          },
         },
-        set(name: string, value: string, options: CookieOptions) {
-          cookieStore.set({ name, value, ...options });
-        },
-        remove(name: string, options: CookieOptions) {
-          cookieStore.delete({ name, ...options });
-        }
       }
-    });
-
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-
+    )
+    
+    // Tukar kode dengan session
+    const { error } = await supabase.auth.exchangeCodeForSession(code)
+    
     if (!error) {
-      // Sukses: Redirect ke /
-      return NextResponse.redirect(`${origin}${next}`);
+      // Sukses! Redirect user masuk
+      return NextResponse.redirect(`${origin}${next}`)
     }
   }
 
-  // Gagal: Redirect ke halaman sign-in
-  return NextResponse.redirect(`${origin}/SignIn?error=auth_failed`);
+  // Kalau gagal, balikin ke login
+  return NextResponse.redirect(`${origin}/auth/auth-code-error`)
 }
